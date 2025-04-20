@@ -1,114 +1,137 @@
 import { NextResponse } from "next/server"
-import connectToDatabase from "@/lib/db/connect"
-import Registration from "@/lib/db/models/Registration"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "../../auth/[...nextauth]/route"
+import connectDB from "@/lib/db"
+import Registration from "@/models/Registration"
+import { authenticate } from "@/middleware/auth"
 
-export async function GET(request, { params }) {
+// Get single registration
+export async function GET(req, { params }) {
   try {
-    const { id } = params
-    const session = await getServerSession(authOptions)
+    const { authenticated, user } = await authenticate(req)
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!authenticated) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    await connectToDatabase()
+    await connectDB()
 
-    const registration = await Registration.findById(id)
-      .populate("event", "title startDate endDate location")
-      .populate("user", "name email")
-
-    if (!registration) {
-      return NextResponse.json({ error: "Registration not found" }, { status: 404 })
-    }
-
-    // Check if user is authorized to view this registration
-    const isOwner = registration.user._id.toString() === session.user.id
-    const isEventOrganizer = registration.event.organizer?.toString() === session.user.id
-    const isAdmin = session.user.role === "admin"
-
-    if (!isOwner && !isEventOrganizer && !isAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    return NextResponse.json(registration)
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-}
-
-export async function PUT(request, { params }) {
-  try {
-    const { id } = params
-    const session = await getServerSession(authOptions)
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    await connectToDatabase()
-    const data = await request.json()
-
-    const registration = await Registration.findById(id).populate("event", "organizer")
-
-    if (!registration) {
-      return NextResponse.json({ error: "Registration not found" }, { status: 404 })
-    }
-
-    // Check if user is authorized to update this registration
-    const isOwner = registration.user.toString() === session.user.id
-    const isEventOrganizer = registration.event.organizer?.toString() === session.user.id
-    const isAdmin = session.user.role === "admin"
-
-    if (!isOwner && !isEventOrganizer && !isAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    // If user is not admin or organizer, they can only cancel their registration
-    if (!isAdmin && !isEventOrganizer && data.status !== "cancelled") {
-      return NextResponse.json({ error: "You can only cancel your registration" }, { status: 403 })
-    }
-
-    const updatedRegistration = await Registration.findByIdAndUpdate(id, data, {
-      new: true,
-      runValidators: true,
+    // Find registration
+    const registration = await Registration.findById(params.id).populate({
+      path: "event",
+      select: "title description startDate endDate location image organizer",
+      populate: {
+        path: "organizer",
+        select: "name email",
+      },
     })
 
-    return NextResponse.json(updatedRegistration)
+    if (!registration) {
+      return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 })
+    }
+
+    // Check if user is the registrant or the event organizer
+    if (
+      registration.user.toString() !== user._id.toString() &&
+      registration.event.organizer._id.toString() !== user._id.toString() &&
+      user.role !== "admin"
+    ) {
+      return NextResponse.json({ success: false, error: "Not authorized to view this registration" }, { status: 403 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: registration,
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Get registration error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
 
-export async function DELETE(request, { params }) {
+// Cancel registration
+export async function DELETE(req, { params }) {
   try {
-    const { id } = params
-    const session = await getServerSession(authOptions)
+    const { authenticated, user } = await authenticate(req)
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!authenticated) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    await connectToDatabase()
-    const registration = await Registration.findById(id).populate("event", "organizer")
+    await connectDB()
+
+    // Find registration
+    const registration = await Registration.findById(params.id)
 
     if (!registration) {
-      return NextResponse.json({ error: "Registration not found" }, { status: 404 })
+      return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 })
     }
 
-    // Check if user is authorized to delete this registration
-    const isAdmin = session.user.role === "admin"
-    const isEventOrganizer = registration.event.organizer?.toString() === session.user.id
-
-    if (!isAdmin && !isEventOrganizer) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    // Check if user is the registrant
+    if (registration.user.toString() !== user._id.toString() && user.role !== "admin") {
+      return NextResponse.json({ success: false, error: "Not authorized to cancel this registration" }, { status: 403 })
     }
 
-    await Registration.findByIdAndDelete(id)
+    // Update registration status to cancelled
+    registration.status = "cancelled"
+    await registration.save()
 
-    return NextResponse.json({ message: "Registration deleted successfully" })
+    return NextResponse.json({
+      success: true,
+      data: {},
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Cancel registration error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
+  }
+}
+
+// Submit feedback
+export async function PUT(req, { params }) {
+  try {
+    const { authenticated, user } = await authenticate(req)
+
+    if (!authenticated) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
+    }
+
+    const body = await req.json()
+
+    // Validate feedback
+    if (!body.rating || body.rating < 1 || body.rating > 5) {
+      return NextResponse.json({ success: false, error: "Rating must be between 1 and 5" }, { status: 400 })
+    }
+
+    await connectDB()
+
+    // Find registration
+    const registration = await Registration.findById(params.id)
+
+    if (!registration) {
+      return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 })
+    }
+
+    // Check if user is the registrant
+    if (registration.user.toString() !== user._id.toString()) {
+      return NextResponse.json(
+        { success: false, error: "Not authorized to submit feedback for this registration" },
+        { status: 403 },
+      )
+    }
+
+    // Update feedback
+    registration.feedback = {
+      rating: body.rating,
+      comment: body.comment || "",
+      submittedAt: new Date(),
+    }
+
+    await registration.save()
+
+    return NextResponse.json({
+      success: true,
+      data: registration,
+    })
+  } catch (error) {
+    console.error("Submit feedback error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }

@@ -1,93 +1,111 @@
 import { NextResponse } from "next/server"
-import connectToDatabase from "@/lib/db/connect"
-import Event from "@/lib/db/models/Event"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "../../auth/[...nextauth]/route"
+import connectDB from "@/lib/db"
+import Event from "@/models/Event"
+import { isOrganizer } from "@/middleware/auth"
+import { validateEvent } from "@/utils/validators"
 
-export async function GET(request, { params }) {
+// Get single event
+export async function GET(req, { params }) {
   try {
-    const { id } = params
-    await connectToDatabase()
+    await connectDB()
 
-    const event = await Event.findById(id)
+    const event = await Event.findById(params.id)
       .populate("organizer", "name email")
-      .populate({
-        path: "registrations",
-        select: "status registrationDate",
-        populate: {
-          path: "user",
-          select: "name email",
-        },
-      })
+      .populate("categories", "name description")
 
     if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
+      return NextResponse.json({ success: false, error: "Event not found" }, { status: 404 })
     }
 
-    return NextResponse.json(event)
+    return NextResponse.json({
+      success: true,
+      data: event,
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Get event error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
 
-export async function PUT(request, { params }) {
+// Update event
+export async function PUT(req, { params }) {
   try {
-    const { id } = params
-    const session = await getServerSession(authOptions)
+    const { authorized, user } = await isOrganizer(req)
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!authorized) {
+      return NextResponse.json({ success: false, error: "Not authorized to update events" }, { status: 403 })
     }
 
-    await connectToDatabase()
-    const event = await Event.findById(id)
+    await connectDB()
+
+    // Find event
+    let event = await Event.findById(params.id)
 
     if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
+      return NextResponse.json({ success: false, error: "Event not found" }, { status: 404 })
     }
 
-    // Check if user is the organizer or an admin
-    if (event.organizer.toString() !== session.user.id && session.user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    // Check if user is the organizer or admin
+    if (event.organizer.toString() !== user._id.toString() && user.role !== "admin") {
+      return NextResponse.json({ success: false, error: "Not authorized to update this event" }, { status: 403 })
     }
 
-    const data = await request.json()
-    const updatedEvent = await Event.findByIdAndUpdate(id, data, {
+    const body = await req.json()
+
+    // Validate event data
+    const { errors, isValid } = validateEvent(body)
+    if (!isValid) {
+      return NextResponse.json({ success: false, errors }, { status: 400 })
+    }
+
+    // Update event
+    event = await Event.findByIdAndUpdate(params.id, body, {
       new: true,
       runValidators: true,
     })
 
-    return NextResponse.json(updatedEvent)
+    return NextResponse.json({
+      success: true,
+      data: event,
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Update event error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
 
-export async function DELETE(request, { params }) {
+// Delete event
+export async function DELETE(req, { params }) {
   try {
-    const { id } = params
-    const session = await getServerSession(authOptions)
+    const { authorized, user } = await isOrganizer(req)
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!authorized) {
+      return NextResponse.json({ success: false, error: "Not authorized to delete events" }, { status: 403 })
     }
 
-    await connectToDatabase()
-    const event = await Event.findById(id)
+    await connectDB()
+
+    // Find event
+    const event = await Event.findById(params.id)
 
     if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
+      return NextResponse.json({ success: false, error: "Event not found" }, { status: 404 })
     }
 
-    // Check if user is the organizer or an admin
-    if (event.organizer.toString() !== session.user.id && session.user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    // Check if user is the organizer or admin
+    if (event.organizer.toString() !== user._id.toString() && user.role !== "admin") {
+      return NextResponse.json({ success: false, error: "Not authorized to delete this event" }, { status: 403 })
     }
 
-    await Event.findByIdAndDelete(id)
+    // Delete event
+    await event.deleteOne()
 
-    return NextResponse.json({ message: "Event deleted successfully" })
+    return NextResponse.json({
+      success: true,
+      data: {},
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Delete event error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }

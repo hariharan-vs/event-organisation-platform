@@ -1,66 +1,104 @@
 import { NextResponse } from "next/server"
-import connectToDatabase from "@/lib/db/connect"
-import Event from "@/lib/db/models/Event"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "../auth/[...nextauth]/route"
+import connectDB from "@/lib/db"
+import Event from "@/models/Event"
+import { isOrganizer } from "@/middleware/auth"
+import { validateEvent } from "@/utils/validators"
 
-export async function GET(request) {
+// Get all events
+export async function GET(req) {
   try {
-    const { searchParams } = new URL(request.url)
-    const category = searchParams.get("category")
-    const query = searchParams.get("query")
-    const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    await connectDB()
+
+    const { searchParams } = new URL(req.url)
+
+    // Build query
+    const query = { status: "published" }
+
+    // Pagination
+    const page = Number.parseInt(searchParams.get("page")) || 1
+    const limit = Number.parseInt(searchParams.get("limit")) || 10
     const skip = (page - 1) * limit
 
-    await connectToDatabase()
+    // Filtering
+    if (searchParams.has("category")) {
+      query.categories = searchParams.get("category")
+    }
 
-    // Build filter object
-    const filter = { isPublished: true }
-    if (category) filter.category = category
-    if (query) filter.title = { $regex: query, $options: "i" }
+    if (searchParams.has("organizer")) {
+      query.organizer = searchParams.get("organizer")
+    }
 
-    // Get events with pagination
-    const events = await Event.find(filter)
+    // Date filtering
+    if (searchParams.has("startDate")) {
+      query.startDate = { $gte: new Date(searchParams.get("startDate")) }
+    }
+
+    if (searchParams.has("endDate")) {
+      query.endDate = { $lte: new Date(searchParams.get("endDate")) }
+    }
+
+    // Get events
+    const events = await Event.find(query)
       .populate("organizer", "name email")
+      .populate("categories", "name")
       .sort({ startDate: 1 })
       .skip(skip)
       .limit(limit)
 
-    const total = await Event.countDocuments(filter)
+    // Get total count
+    const total = await Event.countDocuments(query)
 
     return NextResponse.json({
-      events,
+      success: true,
+      count: events.length,
+      total,
       pagination: {
-        total,
         page,
         limit,
         pages: Math.ceil(total / limit),
       },
+      data: events,
     })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Get events error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
 
-export async function POST(request) {
+// Create new event
+export async function POST(req) {
   try {
-    const session = await getServerSession(authOptions)
+    const { authorized, user } = await isOrganizer(req)
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!authorized) {
+      return NextResponse.json({ success: false, error: "Not authorized to create events" }, { status: 403 })
     }
 
-    const data = await request.json()
-    await connectToDatabase()
+    const body = await req.json()
 
-    // Add the current user as the organizer
-    data.organizer = session.user.id
+    // Validate event data
+    const { errors, isValid } = validateEvent(body)
+    if (!isValid) {
+      return NextResponse.json({ success: false, errors }, { status: 400 })
+    }
 
-    const event = await Event.create(data)
+    await connectDB()
 
-    return NextResponse.json(event, { status: 201 })
+    // Create event
+    const event = await Event.create({
+      ...body,
+      organizer: user._id,
+    })
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: event,
+      },
+      { status: 201 },
+    )
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Create event error:", error)
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
