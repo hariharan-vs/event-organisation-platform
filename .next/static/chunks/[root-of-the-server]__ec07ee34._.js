@@ -7427,7 +7427,7 @@ class Router {
                     });
                     return new Promise(()=>{});
                 }
-                const routerFilterSValue = ("TURBOPACK compile-time value", JSON.parse('{"numItems":10,"errorRate":0.0001,"numBits":192,"numHashes":14,"bitArray":[1,0,0,1,1,0,0,0,1,1,0,1,0,0,0,1,1,1,0,0,0,1,0,0,1,1,1,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,1,0,1,0,1,0,1,1,1,0,0,1,1,0,0,1,0,1,0,0,1,1,1,1,1,1,0,1,1,1,0,1,0,0,0,1,1,0,1,1,1,1,0,0,0,1,0,0,0,1,1,1,1,0,0,1,0,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,0,0,1,0,1,1,1,1,0,0,1,1,1,1,0,1,0,0,1,1,0,1,0,0,1,0,1,0,0,0,0,1,0,1,1,1,0,0,1,1,0,0,0,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,1,1]}'));
+                const routerFilterSValue = ("TURBOPACK compile-time value", JSON.parse('{"numItems":12,"errorRate":0.0001,"numBits":231,"numHashes":14,"bitArray":[0,0,1,1,0,1,0,0,1,0,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,0,1,0,1,0,0,1,0,1,1,0,1,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0,0,0,0,1,1,1,0,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,0,0,1,0,1,1,0,0,0,1,1,1,0,0,1,1,0,0,0,1,0,1,1,1,1,1,1,0,0,0,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,1,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0,1,1,1,1,0,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,0,0,1,0,1,1,0,1,0,1,1,0,1,0,0,0,0,0,0,1,0,1,1,0,1,1,0,0,1]}'));
                 if (!staticFilterData && routerFilterSValue) {
                     staticFilterData = routerFilterSValue ? routerFilterSValue : undefined;
                 }
@@ -10371,7 +10371,7 @@ function parseStack(stack) {
             const res = regexNextStatic.exec(url.pathname);
             if (res) {
                 var _process_env___NEXT_DIST_DIR_replace, _process_env___NEXT_DIST_DIR;
-                const distDir = (_process_env___NEXT_DIST_DIR = ("TURBOPACK compile-time value", "E:\\event-organisation-platform\\.next")) == null ? void 0 : (_process_env___NEXT_DIST_DIR_replace = _process_env___NEXT_DIST_DIR.replace(/\\/g, '/')) == null ? void 0 : _process_env___NEXT_DIST_DIR_replace.replace(/\/$/, '');
+                const distDir = (_process_env___NEXT_DIST_DIR = ("TURBOPACK compile-time value", "D:\\event-organisation-platform\\.next")) == null ? void 0 : (_process_env___NEXT_DIST_DIR_replace = _process_env___NEXT_DIST_DIR.replace(/\\/g, '/')) == null ? void 0 : _process_env___NEXT_DIST_DIR_replace.replace(/\/$/, '');
                 if (distDir) {
                     frame.file = 'file://' + distDir.concat(res.pop()) + url.search;
                 }
